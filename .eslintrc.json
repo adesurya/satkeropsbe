@@ -1,0 +1,26 @@
+{
+  "env": {
+    "node": true,
+    "es2022": true
+  },
+  "extends": ["eslint:recommended"],
+  "parserOptions": {
+    "ecmaVersion": 2022
+  },
+  "rules": {
+    "no-console": "warn",
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-new-func": "error",
+    "no-script-url": "error",
+    "no-prototype-builtins": "error",
+    "no-return-await": "error",
+    "require-await": "error",
+    "eqeqeq": ["error", "always"],
+    "curly": "error",
+    "strict": ["error", "global"],
+    "prefer-const": "error",
+    "no-var": "error"
+  }
+}

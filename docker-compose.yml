@@ -1,0 +1,51 @@
+version: '3.9'
+
+services:
+  api:
+    build:
+      context: .
+      target: production
+    container_name: crime_api
+    restart: unless-stopped
+    ports:
+      - '5000:5000'
+    env_file: .env
+    environment:
+      DB_HOST: mysql
+      NODE_ENV: production
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - crime_net
+
+  mysql:
+    image: mysql:8.0
+    container_name: crime_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASS}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
+    ports:
+      - '3307:3306'
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-p${DB_PASS}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - crime_net
+
+volumes:
+  mysql_data:
+
+networks:
+  crime_net:
+    driver: bridge

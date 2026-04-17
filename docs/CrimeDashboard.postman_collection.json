@@ -1,0 +1,142 @@
+{
+  "info": {
+    "name": "Crime Dashboard API — v2",
+    "description": "Koleksi lengkap v2:\n- Auth: CLIENTID + Cookie (dors.stamaops.polri.go.id)\n- Sync per-hari, scheduler 6 jam\n- Redis cache di semua dashboard (_cached: true/false)\n- Startup probe saat server mulai",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",      "value": "http://localhost:5000/api/v1" },
+    { "key": "access_token",  "value": "" },
+    { "key": "refresh_token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const r = pm.response.json();",
+            "if (r.success) {",
+            "  pm.collectionVariables.set('access_token', r.data.access_token);",
+            "  pm.collectionVariables.set('refresh_token', r.data.refresh_token);",
+            "}"
+          ]}}],
+          "request": {
+            "method": "POST", "url": "{{base_url}}/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"Admin@1234!\"\n}" }
+          }
+        },
+        { "name": "Get Profile (Me)", "request": { "method": "GET", "url": "{{base_url}}/auth/me", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Refresh Token", "request": { "method": "POST", "url": "{{base_url}}/auth/refresh", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"refresh_token\": \"{{refresh_token}}\"}" } } },
+        { "name": "Logout", "request": { "method": "POST", "url": "{{base_url}}/auth/logout", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } }
+      ]
+    },
+    {
+      "name": "👥 User Management",
+      "item": [
+        { "name": "List Users", "request": { "method": "GET", "url": "{{base_url}}/users?page=1&limit=20", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Create User (Polda)", "request": { "method": "POST", "url": "{{base_url}}/users", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"nama\": \"Polda Metro Jaya\",\n  \"username\": \"polda_metro\",\n  \"email\": \"polda.metro@polri.go.id\",\n  \"password\": \"Polda@1234!\",\n  \"role\": \"polda\",\n  \"id_polda\": \"060.12\"\n}" } } },
+        { "name": "Create User (Polres)", "request": { "method": "POST", "url": "{{base_url}}/users", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"nama\": \"Polres Tangerang Selatan\",\n  \"username\": \"polres_tangsel\",\n  \"email\": \"polres.tangsel@polri.go.id\",\n  \"password\": \"Polres@1234!\",\n  \"role\": \"polres\",\n  \"id_polda\": \"060.12\",\n  \"id_polres\": \"060.17.31\"\n}" } } },
+        { "name": "Toggle Active", "request": { "method": "PATCH", "url": "{{base_url}}/users/:id/toggle-active", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Unlock Account", "request": { "method": "POST", "url": "{{base_url}}/users/:id/unlock", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } }
+      ]
+    },
+    {
+      "name": "📋 Laporan (LP A & B)",
+      "item": [
+        {
+          "name": "LP/A — Filter Harian",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/laporan/a?from=2026-04-16&to=2026-04-16&from_hour=10:30:01&to_hour=11:00:00&showby=updated_at&page=1&limit=500&order_by=updated_at",
+              "query": [
+                {"key":"from","value":"2026-04-16"}, {"key":"to","value":"2026-04-16"},
+                {"key":"from_hour","value":"10:30:01"}, {"key":"to_hour","value":"11:00:00"},
+                {"key":"showby","value":"updated_at"}, {"key":"order_by","value":"updated_at"},
+                {"key":"sort","value":"DESC"}, {"key":"page","value":"1"}, {"key":"limit","value":"500"},
+                {"key":"id_polda","value":"","disabled":true}, {"key":"id_polres","value":"","disabled":true},
+                {"key":"kategori_kejahatan","value":"","disabled":true}, {"key":"q","value":"","disabled":true}
+              ]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }]
+          }
+        },
+        {
+          "name": "LP/A — Filter Polda + Kategori",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/laporan/a?from=2026-04-01&to=2026-04-16&id_polda=060.14&kategori_kejahatan=Kecelakaan&page=1&limit=50",
+              "query": [
+                {"key":"from","value":"2026-04-01"}, {"key":"to","value":"2026-04-16"},
+                {"key":"id_polda","value":"060.14"}, {"key":"kategori_kejahatan","value":"Kecelakaan"},
+                {"key":"page","value":"1"}, {"key":"limit","value":"50"}
+              ]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }]
+          }
+        },
+        {
+          "name": "LP/B — Filter Harian",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/laporan/b?from=2026-04-15&to=2026-04-15&from_hour=10:30:01&to_hour=11:00:00&page=1&showby=updated_at&order_by=updated_at",
+              "query": [
+                {"key":"from","value":"2026-04-15"}, {"key":"to","value":"2026-04-15"},
+                {"key":"from_hour","value":"10:30:01"}, {"key":"to_hour","value":"11:00:00"},
+                {"key":"page","value":"1"}, {"key":"showby","value":"updated_at"}, {"key":"order_by","value":"updated_at"}
+              ]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }]
+          }
+        },
+        { "name": "LP/A — Detail ID 4251405", "request": { "method": "GET", "url": "{{base_url}}/laporan/a/4251405", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "LP/B — Detail ID 4248421", "request": { "method": "GET", "url": "{{base_url}}/laporan/b/4248421", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Search Gabungan A & B", "request": { "method": "GET", "url": { "raw": "{{base_url}}/laporan/search?q=kecelakaan&page=1&limit=20", "query": [{"key":"q","value":"kecelakaan"},{"key":"page","value":"1"},{"key":"limit","value":"20"}] }, "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } }
+      ]
+    },
+    {
+      "name": "📊 Dashboard (Redis cached)",
+      "description": "Semua response menyertakan _cached: true/false.\nCache TTL 6 jam, otomatis invalidated setelah sync.",
+      "item": [
+        { "name": "Summary", "request": { "method": "GET", "url": { "raw": "{{base_url}}/dashboard/summary?from=2026-04-01&to=2026-04-16", "query": [{"key":"from","value":"2026-04-01"},{"key":"to","value":"2026-04-16"}] }, "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Heatmap", "request": { "method": "GET", "url": { "raw": "{{base_url}}/dashboard/heatmap?from=2026-04-01&to=2026-04-16", "query": [{"key":"from","value":"2026-04-01"},{"key":"to","value":"2026-04-16"}] }, "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Trend Harian", "request": { "method": "GET", "url": { "raw": "{{base_url}}/dashboard/trend?granularity=day&from=2026-04-01&to=2026-04-16", "query": [{"key":"granularity","value":"day"},{"key":"from","value":"2026-04-01"},{"key":"to","value":"2026-04-16"}] }, "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Trend Mingguan", "request": { "method": "GET", "url": { "raw": "{{base_url}}/dashboard/trend?granularity=week&from=2026-01-01&to=2026-04-16", "query": [{"key":"granularity","value":"week"},{"key":"from","value":"2026-01-01"},{"key":"to","value":"2026-04-16"}] }, "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Trend Bulanan", "request": { "method": "GET", "url": { "raw": "{{base_url}}/dashboard/trend?granularity=month&from=2026-01-01&to=2026-04-16", "query": [{"key":"granularity","value":"month"},{"key":"from","value":"2026-01-01"},{"key":"to","value":"2026-04-16"}] }, "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Drilldown Polda", "request": { "method": "GET", "url": "{{base_url}}/dashboard/drilldown?level=polda", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Drilldown Polres (Metro Jaya)", "request": { "method": "GET", "url": { "raw": "{{base_url}}/dashboard/drilldown?level=polres&id_polda=060.12", "query": [{"key":"level","value":"polres"},{"key":"id_polda","value":"060.12"}] }, "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Korban & Pelaku", "request": { "method": "GET", "url": { "raw": "{{base_url}}/dashboard/korban-pelaku?from=2026-04-01&to=2026-04-16", "query": [{"key":"from","value":"2026-04-01"},{"key":"to","value":"2026-04-16"}] }, "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Anomaly Detection", "request": { "method": "GET", "url": { "raw": "{{base_url}}/dashboard/anomaly?threshold=2.0&from=2026-01-01&to=2026-04-16", "query": [{"key":"threshold","value":"2.0"},{"key":"from","value":"2026-01-01"},{"key":"to","value":"2026-04-16"}] }, "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } },
+        { "name": "Clustering Hotspot", "request": { "method": "GET", "url": { "raw": "{{base_url}}/dashboard/clustering?precision=2&from=2026-04-01&to=2026-04-16", "query": [{"key":"precision","value":"2"},{"key":"from","value":"2026-04-01"},{"key":"to","value":"2026-04-16"}] }, "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }] } }
+      ]
+    },
+    {
+      "name": "🤖 AI Insight",
+      "item": [
+        { "name": "Klasifikasi Laporan (NLP)", "request": { "method": "POST", "url": "{{base_url}}/insight/classify", "header": [{"key":"Authorization","value":"Bearer {{access_token}}"},{"key":"Content-Type","value":"application/json"}], "body": { "mode": "raw", "raw": "{\n  \"uraian\": \"Semula Kbm Daihatsu Xenia No.Pol R-1825-PA melaju dibahu jalan sebelah Utara dari arah Barat ke Timur dengan kecepatan lambat, diwaktu yang sama Spm Suzuki Smash No.Pol R-6274-XH menabrak roda kanan depan sehingga terjadi laka lantas.\"\n}" } } },
+        { "name": "Briefing Harian", "request": { "method": "GET", "url": { "raw": "{{base_url}}/insight/briefing?date=2026-04-16", "query": [{"key":"date","value":"2026-04-16"}] }, "header": [{"key":"Authorization","value":"Bearer {{access_token}}"}] } },
+        { "name": "Smart Search Semantik", "request": { "method": "GET", "url": { "raw": "{{base_url}}/insight/smart-search?q=kecelakaan lalu lintas tabrak samping di jalan umum", "query": [{"key":"q","value":"kecelakaan lalu lintas tabrak samping di jalan umum"}] }, "header": [{"key":"Authorization","value":"Bearer {{access_token}}"}] } },
+        { "name": "Forecast Zona Rawan", "request": { "method": "GET", "url": "{{base_url}}/insight/forecast", "header": [{"key":"Authorization","value":"Bearer {{access_token}}"}] } }
+      ]
+    },
+    {
+      "name": "⚙️ Settings & Sync",
+      "item": [
+        { "name": "List Semua Setting", "request": { "method": "GET", "url": "{{base_url}}/settings", "header": [{"key":"Authorization","value":"Bearer {{access_token}}"}] } },
+        { "name": "Set Base URL API Sumber", "request": { "method": "PUT", "url": "{{base_url}}/settings/source_api_base_url", "header": [{"key":"Authorization","value":"Bearer {{access_token}}"},{"key":"Content-Type","value":"application/json"}], "body": { "mode": "raw", "raw": "{\n  \"value\": \"https://dors.stamaops.polri.go.id/api/v1\"\n}" } } },
+        { "name": "Set CLIENTID ⭐", "request": { "method": "PUT", "url": "{{base_url}}/settings/source_api_client_id", "header": [{"key":"Authorization","value":"Bearer {{access_token}}"},{"key":"Content-Type","value":"application/json"}], "body": { "mode": "raw", "raw": "{\n  \"value\": \"ee368e01a04340d02ee35cb4a1dd6dfc\"\n}" } } },
+        { "name": "Set Cookie (laravel_session) ⭐", "request": { "method": "PUT", "url": "{{base_url}}/settings/source_api_cookie", "header": [{"key":"Authorization","value":"Bearer {{access_token}}"},{"key":"Content-Type","value":"application/json"}], "body": { "mode": "raw", "raw": "{\n  \"value\": \"laravel_session=eyJpdiI6IjRlRUtDR3lX...\"\n}" } } },
+        { "name": "Set Interval Sync (6 jam)", "request": { "method": "PUT", "url": "{{base_url}}/settings/sync_interval_hours", "header": [{"key":"Authorization","value":"Bearer {{access_token}}"},{"key":"Content-Type","value":"application/json"}], "body": { "mode": "raw", "raw": "{\n  \"value\": \"6\"\n}" } } },
+        { "name": "Set Days Back (2 hari)", "request": { "method": "PUT", "url": "{{base_url}}/settings/sync_days_back", "header": [{"key":"Authorization","value":"Bearer {{access_token}}"},{"key":"Content-Type","value":"application/json"}], "body": { "mode": "raw", "raw": "{\n  \"value\": \"2\"\n}" } } },
+        { "name": "Trigger Sync — LP/A", "request": { "method": "POST", "url": "{{base_url}}/settings/sync/trigger?tipe=a", "header": [{"key":"Authorization","value":"Bearer {{access_token}}"}] } },
+        { "name": "Trigger Sync — LP/B", "request": { "method": "POST", "url": "{{base_url}}/settings/sync/trigger?tipe=b", "header": [{"key":"Authorization","value":"Bearer {{access_token}}"}] } },
+        { "name": "Trigger Sync — Semua", "request": { "method": "POST", "url": "{{base_url}}/settings/sync/trigger", "header": [{"key":"Authorization","value":"Bearer {{access_token}}"}] } },
+        { "name": "Log Riwayat Sync", "request": { "method": "GET", "url": { "raw": "{{base_url}}/settings/sync/logs?page=1&limit=20", "query": [{"key":"page","value":"1"},{"key":"limit","value":"20"},{"key":"tipe","value":"","disabled":true},{"key":"status","value":"","disabled":true}] }, "header": [{"key":"Authorization","value":"Bearer {{access_token}}"}] } },
+        { "name": "Init Default Settings", "request": { "method": "POST", "url": "{{base_url}}/settings/init", "header": [{"key":"Authorization","value":"Bearer {{access_token}}"}] } }
+      ]
+    },
+    { "name": "🏥 Health Check", "item": [{ "name": "Health", "request": { "method": "GET", "url": "{{base_url}}/health" } }] }
+  ]
+}
