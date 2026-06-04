@@ -34,4 +34,11 @@ const syncLimiter = createLimiter(
   'Terlalu banyak permintaan sinkronisasi. Tunggu 1 menit.'
 );
 
-module.exports = { apiLimiter, authLimiter, syncLimiter };
+// AI/Insight limiter — endpoint mahal (panggil OpenAI). Default: 20 req / 5 menit.
+const aiLimiter = createLimiter(
+  parseInt(process.env.AI_RATE_LIMIT_WINDOW_MS) || 5 * 60 * 1000,
+  parseInt(process.env.AI_RATE_LIMIT_MAX) || 20,
+  'Terlalu banyak permintaan layanan AI. Coba lagi beberapa menit lagi.'
+);
+
+module.exports = { apiLimiter, authLimiter, syncLimiter, aiLimiter };

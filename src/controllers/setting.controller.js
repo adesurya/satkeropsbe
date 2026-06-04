@@ -7,17 +7,21 @@ const syncService = require('../services/sync.service');
 const schedulerService = require('../services/scheduler.service');
 
 const DEFAULT_SETTINGS = [
-  { key: 'sync_interval_minutes', value: '60', type: 'number', description: 'Interval sinkronisasi data dari API sumber (menit)' },
+  { key: 'sync_interval_hours', value: '6', type: 'number', description: 'Interval sinkronisasi data dari API sumber (jam)' },
   { key: 'sync_enabled', value: 'true', type: 'boolean', description: 'Aktifkan sinkronisasi otomatis' },
   { key: 'sync_limit_per_request', value: '500', type: 'number', description: 'Jumlah data per request ke API sumber' },
   { key: 'source_api_base_url', value: '', type: 'string', description: 'Base URL API sumber data', is_sensitive: false },
-  { key: 'source_api_token', value: '', type: 'string', description: 'Token autentikasi API sumber', is_sensitive: true },
+  { key: 'source_api_client_id', value: '', type: 'string', description: 'CLIENTID API sumber', is_sensitive: true },
+  { key: 'source_api_cookie', value: '', type: 'string', description: 'Cookie (laravel_session) API sumber', is_sensitive: true },
   { key: 'sync_lp_a_enabled', value: 'true', type: 'boolean', description: 'Aktifkan sync LP Model A' },
   { key: 'sync_lp_b_enabled', value: 'true', type: 'boolean', description: 'Aktifkan sync LP Model B' },
-  { key: 'sync_days_back', value: '7', type: 'number', description: 'Ambil data N hari ke belakang saat sync' },
+  { key: 'sync_days_back', value: '2', type: 'number', description: 'Ambil data N hari ke belakang saat sync' },
   { key: 'anomaly_threshold', value: '2.0', type: 'number', description: 'Z-score threshold untuk deteksi anomali' },
   { key: 'heatmap_max_points', value: '2000', type: 'number', description: 'Maksimal titik heatmap yang dikembalikan' },
 ];
+
+// Key yang bila berubah memerlukan penjadwalan ulang scheduler.
+const RESCHEDULE_KEYS = new Set(['sync_interval_hours', 'sync_interval_minutes', 'sync_enabled']);
 
 const SettingController = {
   /**
@@ -26,7 +30,6 @@ const SettingController = {
   async index(req, res) {
     try {
       const settings = await ApiSetting.findAll({ order: [['key', 'ASC']] });
-      // Mask sensitive values for non-admin
       const safe = settings.map(s => {
         const obj = s.toJSON();
         if (obj.is_sensitive && req.user.role !== 'admin') {
@@ -65,13 +68,17 @@ const SettingController = {
       const { key } = req.params;
       const { value, description } = req.body;
 
-      let setting = await ApiSetting.findOne({ where: { key } });
+      const setting = await ApiSetting.findOne({ where: { key } });
       if (!setting) return ApiResponse.notFound(res, 'Setting tidak ditemukan');
 
-      await setting.update({ value: String(value), description: description || setting.description, updated_by: req.user.id });
+      await setting.update({
+        value: String(value),
+        description: description || setting.description,
+        updated_by: req.user.id,
+      });
 
-      // If interval changed, reschedule
-      if (key === 'sync_interval_minutes' || key === 'sync_enabled') {
+      // BUG-2: scheduler membaca `sync_interval_hours` → reschedule untuk key yang relevan
+      if (RESCHEDULE_KEYS.has(key)) {
         await schedulerService.reschedule();
       }
 
@@ -84,8 +91,7 @@ const SettingController = {
   },
 
   /**
-   * POST /settings/init
-   * Initialize default settings (admin only, idempotent)
+   * POST /settings/init — Initialize default settings (idempotent)
    */
   async init(req, res) {
     try {
@@ -102,19 +108,22 @@ const SettingController = {
   },
 
   /**
-   * POST /settings/sync/trigger
-   * Manually trigger sync
+   * POST /settings/sync/trigger — Manually trigger sync
    */
   async triggerSync(req, res) {
     try {
-      const tipe = req.query.tipe; // 'a', 'b', or undefined (both)
+      const tipe = ['a', 'b'].includes((req.query.tipe || '').toLowerCase())
+        ? req.query.tipe.toLowerCase() : null;
+
       res.status(202).json({ success: true, message: 'Sinkronisasi dimulai di background', timestamp: new Date() });
 
-      // Fire & forget
-      syncService.syncAll(tipe).catch(e => logger.error('Manual sync error:', e));
+      // BUG-1: syncAll menerima OBJECT options, bukan string.
+      syncService
+        .syncAll({ tipe, triggeredBy: 'manual' })
+        .catch((e) => logger.error('Manual sync error:', e));
     } catch (error) {
       logger.error('Trigger sync error:', error);
-      return ApiResponse.error(res);
+      if (!res.headersSent) return ApiResponse.error(res);
     }
   },
 

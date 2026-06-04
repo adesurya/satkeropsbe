@@ -7,7 +7,6 @@ const cors = require('cors');
 const compression = require('compression');
 const morgan = require('morgan');
 const swaggerUi = require('swagger-ui-express');
-const xssClean = require('xss-clean');
 
 const { testConnection } = require('./config/database');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
@@ -71,7 +70,10 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 // ─── General Middleware ────────────────────────────────────────────────────────
-app.use(xssClean());
+// Catatan SEC-2: xss-clean dilepas. Paket tsb. unmaintained, memutasi input
+// secara destruktif (berisiko merusak teks laporan yang sah), dan sebelumnya
+// terpasang SEBELUM body parser sehingga req.body tidak pernah tersanitasi.
+// Proteksi injeksi ditangani oleh parameterized query (Sequelize) + escaping output.
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -115,9 +117,14 @@ const bootstrap = async () => {
     // 1. Database
     await testConnection();
     const { sequelize } = require('./config/database');
-    if (process.env.NODE_ENV !== 'production') {
-      await sequelize.sync({ alter: true });
-      logger.info('✅ Database schema synced');
+
+    // SCH-1: TIDAK lagi memakai sync({ alter: true }) yang menyebabkan ledakan index.
+    // Di non-produksi, jalankan sync() POLOS (hanya CREATE TABLE IF NOT EXISTS,
+    // tidak pernah meng-ALTER) untuk kenyamanan dev. Bisa dimatikan dgn DB_SYNC=false.
+    // Produksi: gunakan migration (npm run migrate).
+    if (process.env.NODE_ENV !== 'production' && process.env.DB_SYNC !== 'false') {
+      await sequelize.sync();
+      logger.info('✅ Database schema synced (plain, no-alter). Produksi: pakai migration.');
     }
 
     // 2. Redis
@@ -132,7 +139,7 @@ const bootstrap = async () => {
       logger.info(`💾 Redis cache: ${cache.isReady() ? 'connected' : 'unavailable (running without cache)'}`);
     });
 
-    // 4. Startup probe: check for new data, sync last 2 days if found
+    // 4. Startup probe
     if (process.env.SKIP_STARTUP_SYNC !== 'true') {
       setImmediate(async () => {
         try {
@@ -143,7 +150,7 @@ const bootstrap = async () => {
       });
     }
 
-    // 5. Recurring scheduler (every 6 hours)
+    // 5. Recurring scheduler
     await schedulerService.start();
 
     // 6. Graceful shutdown

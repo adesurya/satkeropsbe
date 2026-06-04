@@ -4,10 +4,14 @@ const express = require('express');
 const Joi = require('joi');
 const router = express.Router();
 
+const { sequelize } = require('../config/database');
+const cache = require('../utils/cache');
+
 const { authenticate } = require('../middleware/auth');
 const { authorize, requireMinRole, applyWilayahScope } = require('../middleware/rbac');
 const { validate, schemas } = require('../middleware/validate');
-const { authLimiter, syncLimiter } = require('../middleware/rateLimiter');
+const { authLimiter, syncLimiter, aiLimiter } = require('../middleware/rateLimiter');
+const { auditAccess } = require('../middleware/audit');
 
 const AuthController      = require('../controllers/auth.controller');
 const UserController      = require('../controllers/user.controller');
@@ -16,12 +20,41 @@ const DashboardController = require('../controllers/dashboard.controller');
 const InsightController   = require('../controllers/insight.controller');
 const SettingController   = require('../controllers/setting.controller');
 const WilayahController   = require('../controllers/wilayah.controller');
+const ExportController    = require('../controllers/export.controller');
+const AuditController     = require('../controllers/audit.controller');
 
 const uuid = validate(schemas.uuidParam, 'params');
 
-// ── Health ─────────────────────────────────────────────────────────────────────
-router.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date(), version: process.env.API_VERSION || 'v1' });
+// ── Audit: pasang paling awal supaya listener 'finish' membungkus semua route ───
+// (Middleware ini hanya MENCATAT setelah respons terkirim, non-blocking.)
+router.use(auditAccess);
+
+// ── Health (dalam: cek DB + Redis) ──────────────────────────────────────────────
+router.get('/health', async (req, res) => {
+  const health = {
+    status: 'OK',
+    timestamp: new Date(),
+    version: process.env.API_VERSION || 'v1',
+    components: {},
+  };
+
+  try {
+    await sequelize.authenticate();
+    health.components.database = 'up';
+  } catch (e) {
+    health.components.database = 'down';
+    health.status = 'DEGRADED';
+  }
+
+  // Redis bersifat opsional → tidak membuat health gagal total
+  health.components.redis = cache.isReady() ? 'up' : 'down';
+  if (health.components.redis === 'down' && health.status === 'OK') {
+    health.status = 'DEGRADED';
+  }
+
+  // Hanya DB yang kritikal → 503 bila DB mati (mempengaruhi container healthcheck)
+  const code = health.components.database === 'down' ? 503 : 200;
+  return res.status(code).json(health);
 });
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
@@ -62,6 +95,10 @@ router.get('/laporan/a/:id',  authenticate, applyWilayahScope, LaporanController
 router.get('/laporan/b',      authenticate, applyWilayahScope, lq, LaporanController.indexB);
 router.get('/laporan/b/:id',  authenticate, applyWilayahScope, LaporanController.showB);
 
+// ── Export (ter-scope wilayah) ───────────────────────────────────────────────────
+router.get('/export/laporan',           authenticate, applyWilayahScope, ExportController.laporan);
+router.get('/export/dashboard/summary', authenticate, applyWilayahScope, ExportController.dashboardSummary);
+
 // ── Dashboard ──────────────────────────────────────────────────────────────────
 router.get('/dashboard/summary',       authenticate, applyWilayahScope, DashboardController.summary);
 router.get('/dashboard/heatmap',       authenticate, applyWilayahScope, DashboardController.heatmap);
@@ -71,11 +108,14 @@ router.get('/dashboard/korban-pelaku', authenticate, applyWilayahScope, Dashboar
 router.get('/dashboard/anomaly',       authenticate, applyWilayahScope, DashboardController.anomaly);
 router.get('/dashboard/clustering',    authenticate, applyWilayahScope, DashboardController.clustering);
 
-// ── Insight ────────────────────────────────────────────────────────────────────
-router.post('/insight/classify',    authenticate, requireMinRole('polres'), InsightController.classify);
-router.get('/insight/briefing',     authenticate, applyWilayahScope, requireMinRole('polres'), InsightController.briefing);
-router.get('/insight/smart-search', authenticate, applyWilayahScope, InsightController.smartSearch);
-router.get('/insight/forecast',     authenticate, applyWilayahScope, requireMinRole('polda'), InsightController.forecast);
+// ── Insight (AI) — limiter khusus karena mahal (MIN-4) ───────────────────────────
+router.post('/insight/classify',    authenticate, aiLimiter, requireMinRole('polres'), InsightController.classify);
+router.get('/insight/briefing',     authenticate, aiLimiter, applyWilayahScope, requireMinRole('polres'), InsightController.briefing);
+router.get('/insight/smart-search', authenticate, aiLimiter, applyWilayahScope, InsightController.smartSearch);
+router.get('/insight/forecast',     authenticate, aiLimiter, applyWilayahScope, requireMinRole('polda'), InsightController.forecast);
+
+// ── Audit log ────────────────────────────────────────────────────────────────────
+router.get('/audit/logs', authenticate, requireMinRole('manager'), AuditController.index);
 
 // ── Settings (static routes BEFORE :key param) ─────────────────────────────────
 router.get('/settings',               authenticate, requireMinRole('manager'), SettingController.index);

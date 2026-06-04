@@ -9,6 +9,7 @@ const ApiSetting = require('./ApiSetting');
 const SyncLog = require('./SyncLog');
 const Polda = require('./Polda');
 const Polres = require('./Polres');
+const AuditLog = require('./AuditLog');
 
 // ── Associations ────────────────────────────────────────────────────────────
 // Master wilayah: satu polda punya banyak polres (relasi logis, tanpa FK keras
@@ -16,12 +17,12 @@ const Polres = require('./Polres');
 Polda.hasMany(Polres, { foreignKey: 'kode_polda', sourceKey: 'kode_polda', as: 'polres' });
 Polres.belongsTo(Polda, { foreignKey: 'kode_polda', targetKey: 'kode_polda', as: 'polda' });
 
-// Catatan: laporan_a / laporan_b / terlibat TIDAK diberi FK constraint.
-// Integritas dijaga di level aplikasi karena data berasal dari sinkronisasi API.
+// Catatan: laporan_a / laporan_b / terlibat / audit_logs TIDAK diberi FK constraint.
+// Integritas dijaga di level aplikasi.
 
 const models = {
   User, LaporanA, LaporanB, Terlibat, ApiSetting, SyncLog,
-  Polda, Polres, sequelize,
+  Polda, Polres, AuditLog, sequelize,
 };
 
 module.exports = models;

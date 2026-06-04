@@ -1,0 +1,11 @@
+'use strict';
+
+const path = require('path');
+require('dotenv').config();
+
+module.exports = {
+  config: path.resolve('src/config/config.js'),
+  'migrations-path': path.resolve('migrations'),
+  'seeders-path': path.resolve('seeders'),
+  'models-path': path.resolve('src/models'),
+};
