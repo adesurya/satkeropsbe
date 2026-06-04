@@ -7,6 +7,13 @@ const { sequelize } = require('../config/database');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
 
+// ── Konfigurasi pagination (bisa di-override via env) ─────────────────────────
+// CATATAN PERBAIKAN: server sumber membatasi page size (per_page=50) walau diminta
+// lebih besar. Karena itu terminasi loop TIDAK boleh memakai `records.length < limit`
+// (itu berhenti setelah page 1 di hari multi-halaman). Terminasi murni by last_page.
+const PAGE_LIMIT = parseInt(process.env.SYNC_PAGE_LIMIT || '500', 10); // advisory; server boleh mengecilkan
+const MAX_PAGES = parseInt(process.env.SYNC_MAX_PAGES || '2000', 10);  // pengaman; naik dari 50
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -200,10 +207,15 @@ const extractErrorMessage = (error) => {
 /**
  * Sync ONE specific date for one endpoint type
  * API is filtered per-day: from=YYYY-MM-DD to=YYYY-MM-DD
+ *
+ * PERBAIKAN PAGINATION:
+ *  - Terminasi loop MURNI berdasarkan `last_page` (bukan `records.length < limit`),
+ *    sehingga semua halaman terbaca walau server membatasi per_page < limit.
+ *  - Safety cap dinaikkan (MAX_PAGES) agar hari bervolume tinggi tidak terpotong.
  */
 const syncDay = async (tipe, dateStr, client) => {
   const Model = tipe === 'a' ? LaporanA : LaporanB;
-  const limit = 500;
+  const limit = PAGE_LIMIT;
   let page = 1;
   let hasMore = true;
   let total_fetched = 0, total_inserted = 0, total_updated = 0, total_skipped = 0;
@@ -272,17 +284,19 @@ const syncDay = async (tipe, dateStr, client) => {
       `fetched=${records.length} inserted=${total_inserted} updated=${total_updated} skipped=${total_skipped}`
     );
 
-    // Pagination check
-    const lastPage = data.last_page ?? 1;
-    if (page >= lastPage || records.length < limit) {
+    // ── Pagination check (PERBAIKAN) ──
+    // Hanya berhenti bila sudah mencapai last_page. JANGAN berhenti hanya karena
+    // records.length < limit (server bisa membatasi per_page lebih kecil dari limit).
+    const lastPage = parseInt(data.last_page, 10) || 1;
+    if (page >= lastPage) {
       hasMore = false;
     } else {
       page++;
     }
 
-    if (page > 50) {
+    if (page > MAX_PAGES) {
       hasMore = false;
-      logger.warn(`[Sync LP${tipe.toUpperCase()}] Safety cap 50 pages reached for date=${dateStr}`);
+      logger.warn(`[Sync LP${tipe.toUpperCase()}] Safety cap ${MAX_PAGES} pages reached for date=${dateStr}`);
     }
   }
 
