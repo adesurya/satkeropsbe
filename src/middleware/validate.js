@@ -97,6 +97,31 @@ const schemas = {
     limit: Joi.number().integer().min(1).max(100).default(20),
   }),
 
+  // Query daftar tahanan
+  tahananQuery: Joi.object({
+    from: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    to: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    date_field: Joi.string().valid('updated_at', 'created_at', 'tgl_masuk', 'tgl_keluar').default('updated_at'),
+    order_by: Joi.string().valid('updated_at', 'created_at', 'tgl_masuk', 'tgl_keluar', 'nama', 'id').default('updated_at'),
+    sort: Joi.string().valid('ASC', 'DESC', 'asc', 'desc').default('DESC'),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(200).default(50),
+    id_polda: Joi.string().max(20).optional(),
+    id_polres: Joi.string().max(20).optional(),
+    tipe_tahanan: Joi.string().max(20).optional(),
+    gender: Joi.string().max(2).optional(),
+    id_jenis_kasus: Joi.string().max(20).optional(),
+    status: Joi.string().valid('aktif', 'keluar').optional(),
+    q: Joi.string().max(200).optional(),
+  }),
+
+  // Trigger sinkronisasi tahanan
+  tahananSync: Joi.object({
+    from: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    to: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    kode_polda: Joi.string().max(20).optional(),
+  }),
+
   // Query daftar wilayah (polda/polres)
   wilayahQuery: Joi.object({
     q: Joi.string().max(150).optional(),

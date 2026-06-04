@@ -18,6 +18,11 @@ const DEFAULT_SETTINGS = [
   { key: 'sync_days_back', value: '2', type: 'number', description: 'Ambil data N hari ke belakang saat sync' },
   { key: 'anomaly_threshold', value: '2.0', type: 'number', description: 'Z-score threshold untuk deteksi anomali' },
   { key: 'heatmap_max_points', value: '2000', type: 'number', description: 'Maksimal titik heatmap yang dikembalikan' },
+  // ── Sinkronisasi data tahanan ──
+  { key: 'tahanan_sync_enabled', value: 'true', type: 'boolean', description: 'Aktifkan sinkronisasi otomatis data tahanan' },
+  { key: 'tahanan_sync_interval_hours', value: '6', type: 'number', description: 'Interval sinkronisasi tahanan (jam)' },
+  { key: 'tahanan_sync_days_back', value: '2', type: 'number', description: 'Ambil data tahanan N hari ke belakang saat sync' },
+  { key: 'tahanan_sync_polda_list', value: '060.12', type: 'string', description: 'Daftar kode polda yang disinkronkan (pisahkan dengan koma)' },
 ];
 
 // Key yang bila berubah memerlukan penjadwalan ulang scheduler.

@@ -22,6 +22,7 @@ const SettingController   = require('../controllers/setting.controller');
 const WilayahController   = require('../controllers/wilayah.controller');
 const ExportController    = require('../controllers/export.controller');
 const AuditController     = require('../controllers/audit.controller');
+const TahananController   = require('../controllers/tahanan.controller');
 
 const uuid = validate(schemas.uuidParam, 'params');
 
@@ -98,6 +99,14 @@ router.get('/laporan/b/:id',  authenticate, applyWilayahScope, LaporanController
 // ── Export (ter-scope wilayah) ───────────────────────────────────────────────────
 router.get('/export/laporan',           authenticate, applyWilayahScope, ExportController.laporan);
 router.get('/export/dashboard/summary', authenticate, applyWilayahScope, ExportController.dashboardSummary);
+
+// ── Tahanan (data dari API sumber /tahanan) ──────────────────────────────────────
+const tq = validate(schemas.tahananQuery, 'query');
+router.get('/tahanan/sync/status',  authenticate, requireMinRole('manager'), TahananController.syncStatus);
+router.post('/tahanan/sync/trigger', authenticate, authorize('admin', 'manager'), syncLimiter, validate(schemas.tahananSync, 'query'), TahananController.triggerSync);
+router.get('/tahanan/stats/summary', authenticate, applyWilayahScope, tq, TahananController.summary);
+router.get('/tahanan',               authenticate, applyWilayahScope, tq, TahananController.index);
+router.get('/tahanan/:id',           authenticate, applyWilayahScope, TahananController.show);
 
 // ── Dashboard ──────────────────────────────────────────────────────────────────
 router.get('/dashboard/summary',       authenticate, applyWilayahScope, DashboardController.summary);

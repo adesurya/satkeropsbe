@@ -14,6 +14,7 @@ const { apiLimiter } = require('./middleware/rateLimiter');
 const routes = require('./routes');
 const swaggerSpec = require('./config/swagger');
 const schedulerService = require('./services/scheduler.service');
+const tahananScheduler = require('./services/tahanan.scheduler');
 const syncService = require('./services/sync.service');
 const cache = require('./utils/cache');
 const logger = require('./utils/logger');
@@ -152,11 +153,13 @@ const bootstrap = async () => {
 
     // 5. Recurring scheduler
     await schedulerService.start();
+    await tahananScheduler.start();
 
     // 6. Graceful shutdown
     const shutdown = async (signal) => {
       logger.info(`\n🛑 ${signal} received. Shutting down gracefully...`);
       schedulerService.stop();
+      tahananScheduler.stop();
       await cache.disconnect();
       server.close(() => {
         logger.info('✅ HTTP server closed');
