@@ -93,6 +93,8 @@ const schemas = {
   searchLP: Joi.object({
     no_lp: Joi.string().min(3).max(100).required(),
     exact: Joi.boolean().default(false),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(20),
   }),
 
   // Query daftar wilayah (polda/polres)
