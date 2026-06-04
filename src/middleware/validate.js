@@ -89,6 +89,20 @@ const schemas = {
     q: Joi.string().max(200).optional(),
   }),
 
+  // Pencarian khusus berdasarkan Nomor LP
+  searchLP: Joi.object({
+    no_lp: Joi.string().min(3).max(100).required(),
+    exact: Joi.boolean().default(false),
+  }),
+
+  // Query daftar wilayah (polda/polres)
+  wilayahQuery: Joi.object({
+    q: Joi.string().max(150).optional(),
+    id_polda: Joi.string().max(20).optional(),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(1000).default(100),
+  }),
+
   updateSetting: Joi.object({
     value: Joi.alternatives().try(
       Joi.string().max(5000),

@@ -15,6 +15,9 @@ const LaporanController   = require('../controllers/laporan.controller');
 const DashboardController = require('../controllers/dashboard.controller');
 const InsightController   = require('../controllers/insight.controller');
 const SettingController   = require('../controllers/setting.controller');
+const WilayahController   = require('../controllers/wilayah.controller');
+
+const uuid = validate(schemas.uuidParam, 'params');
 
 // ── Health ─────────────────────────────────────────────────────────────────────
 router.get('/health', (req, res) => {
@@ -39,19 +42,25 @@ router.put('/auth/change-password', authenticate, validate(changePwSchema), Auth
 // ── Users ──────────────────────────────────────────────────────────────────────
 router.get('/users',              authenticate, requireMinRole('polda'), applyWilayahScope, UserController.index);
 router.post('/users',             authenticate, requireMinRole('polda'), validate(schemas.createUser), UserController.create);
-router.get('/users/:id',          authenticate, applyWilayahScope, UserController.show);
-router.put('/users/:id',          authenticate, requireMinRole('polda'), validate(schemas.updateUser), UserController.update);
-router.delete('/users/:id',       authenticate, authorize('admin', 'manager'), UserController.destroy);
-router.patch('/users/:id/toggle-active', authenticate, authorize('admin', 'manager'), UserController.toggleActive);
-router.post('/users/:id/unlock',  authenticate, authorize('admin'), UserController.unlock);
+router.get('/users/:id',          authenticate, uuid, applyWilayahScope, UserController.show);
+router.put('/users/:id',          authenticate, uuid, requireMinRole('polda'), validate(schemas.updateUser), UserController.update);
+router.delete('/users/:id',       authenticate, uuid, authorize('admin', 'manager'), UserController.destroy);
+router.patch('/users/:id/toggle-active', authenticate, uuid, authorize('admin', 'manager'), UserController.toggleActive);
+router.post('/users/:id/unlock',  authenticate, uuid, authorize('admin'), UserController.unlock);
+
+// ── Wilayah (master polda & polres) ──────────────────────────────────────────────
+const wq = validate(schemas.wilayahQuery, 'query');
+router.get('/wilayah/polda',  authenticate, wq, WilayahController.listPolda);
+router.get('/wilayah/polres', authenticate, wq, WilayahController.listPolres);
 
 // ── Laporan ────────────────────────────────────────────────────────────────────
 const lq = validate(schemas.laporanQuery, 'query');
+router.get('/laporan/by-lp',  authenticate, applyWilayahScope, validate(schemas.searchLP, 'query'), LaporanController.searchByNoLP);
+router.get('/laporan/search', authenticate, applyWilayahScope, lq, LaporanController.search);
 router.get('/laporan/a',      authenticate, applyWilayahScope, lq, LaporanController.indexA);
 router.get('/laporan/a/:id',  authenticate, applyWilayahScope, LaporanController.showA);
 router.get('/laporan/b',      authenticate, applyWilayahScope, lq, LaporanController.indexB);
 router.get('/laporan/b/:id',  authenticate, applyWilayahScope, LaporanController.showB);
-router.get('/laporan/search', authenticate, applyWilayahScope, lq, LaporanController.search);
 
 // ── Dashboard ──────────────────────────────────────────────────────────────────
 router.get('/dashboard/summary',       authenticate, applyWilayahScope, DashboardController.summary);

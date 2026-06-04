@@ -1,6 +1,6 @@
 'use strict';
 
-const { Op, fn, col, literal } = require('sequelize');
+const { Op } = require('sequelize');
 const { LaporanA, LaporanB, Terlibat } = require('../models');
 const ApiResponse = require('../utils/apiResponse');
 const { parsePagination, parseDateRange } = require('../utils/pagination');
@@ -151,7 +151,7 @@ const LaporanController = {
   },
 
   /**
-   * GET /laporan/search — Combined search across A & B
+   * GET /laporan/search — Combined search across A & B (multi-field)
    */
   async search(req, res) {
     try {
@@ -190,6 +190,55 @@ const LaporanController = {
     } catch (error) {
       logger.error('Search error:', error);
       return ApiResponse.error(res);
+    }
+  },
+
+  /**
+   * GET /laporan/by-lp — Pencarian khusus berdasarkan Nomor LP (no_laporan)
+   * Mencari di LP/A & LP/B sekaligus, tetap ter-scope sesuai wilayah role.
+   * Query: no_lp (wajib, min 3 karakter), exact (opsional, 'true' = persis sama)
+   */
+  async searchByNoLP(req, res) {
+    try {
+      const noLp = (req.query.no_lp || '').trim();
+      if (noLp.length < 3) {
+        return ApiResponse.error(res, 'Parameter no_lp minimal 3 karakter', 400);
+      }
+
+      const scope = req.scopeFilter || {};
+      const exact = String(req.query.exact || '').toLowerCase() === 'true';
+      const condition = exact ? noLp : { [Op.like]: `%${noLp}%` };
+      const where = { ...scope, no_laporan: condition };
+
+      const [resA, resB] = await Promise.all([
+        LaporanA.findAll({
+          where,
+          limit: 50,
+          order: [['updated_at', 'DESC']],
+          attributes: { exclude: ['raw_json'] },
+        }),
+        LaporanB.findAll({
+          where,
+          limit: 50,
+          order: [['updated_at', 'DESC']],
+          attributes: { exclude: ['raw_json'] },
+        }),
+      ]);
+
+      const results = [
+        ...resA.map((r) => ({ ...r.toJSON(), tipe_laporan: 'a' })),
+        ...resB.map((r) => ({ ...r.toJSON(), tipe_laporan: 'b' })),
+      ];
+
+      return ApiResponse.success(res, {
+        no_lp: noLp,
+        exact,
+        total: results.length,
+        results,
+      });
+    } catch (error) {
+      logger.error('Search by No LP error:', error);
+      return ApiResponse.error(res, 'Gagal mencari berdasarkan No LP');
     }
   },
 };
