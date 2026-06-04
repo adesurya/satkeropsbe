@@ -2,7 +2,7 @@
 
 const axios = require('axios');
 const moment = require('moment');
-const { LaporanA, LaporanB, Terlibat, ApiSetting, SyncLog } = require('../models');
+const { LaporanA, LaporanB, Terlibat, ApiSetting, SyncLog, Tahanan } = require('../models');
 const { sequelize } = require('../config/database');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
@@ -326,6 +326,205 @@ const checkForNewData = async (tipe = 'a') => {
   }
 };
 
+// ─── Tahanan ──────────────────────────────────────────────────────────────────
+
+const toInt = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = parseInt(v, 10);
+  return Number.isNaN(n) ? null : n;
+};
+const emptyToNull = (v) => {
+  if (v === null || v === undefined) return null;
+  const s = String(v);
+  return s.trim() === '' ? null : s;
+};
+const toDateOnly = (v) => {
+  const s = emptyToNull(v);
+  if (!s) return null;
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null;
+};
+
+/**
+ * Map raw tahanan record → kolom tabel `tahanan`.
+ * kode_polda/res/sek sumber dipetakan ke id_polda/res/sek (selaras scope laporan).
+ */
+const mapTahanan = (raw) => ({
+  id:               raw.id,
+  nik:              emptyToNull(raw.nik),
+  nama:             emptyToNull(raw.nama),
+  id_satuan:        toInt(raw.id_satuan),
+  id_polda:         emptyToNull(raw.kode_polda),
+  id_polres:        emptyToNull(raw.kode_polres),
+  id_polsek:        emptyToNull(raw.kode_polsek),
+  nama_polda:       emptyToNull(raw.polda),
+  nama_polres:      emptyToNull(raw.polres),
+  nama_polsek:      emptyToNull(raw.polsek),
+  no_lp:            emptyToNull(raw.no_lp),
+  tgl_masuk:        toDateOnly(raw.tgl_masuk),
+  tgl_keluar:       toDateOnly(raw.tgl_keluar),
+  perkiraan_keluar: toDateOnly(raw.perkiraan_keluar),
+  tgl_lahir:        toDateOnly(raw.tgl_lahir),
+  gender:           emptyToNull(raw.gender),
+  tipe_tahanan:     emptyToNull(raw.tipe_tahanan),
+  jenis_tahanan:    emptyToNull(raw.jenis_tahanan),
+  kewarganegaraan:  emptyToNull(raw.kewarganegaraan),
+  alamat:           emptyToNull(raw.alamat),
+  id_jenis_kasus:   emptyToNull(raw.id_jenis_kasus),
+  nama_jenis_kasus: emptyToNull(raw.nama_jenis_kasus),
+  lama_ditahan:     toInt(raw.lama_ditahan),
+  lama_ditahan_1:   toInt(raw.lama_ditahan_1),
+  lama_ditahan_2:   toInt(raw.lama_ditahan_2),
+  lama_ditahan_3:   toInt(raw.lama_ditahan_3),
+  sprin_penahanan:                 emptyToNull(raw.sprin_penahanan),
+  sprin_perpanjangan_penahanan_1:  emptyToNull(raw.sprin_perpanjangan_penahanan_1),
+  sprin_perpanjangan_penahanan_2:  emptyToNull(raw.sprin_perpanjangan_penahanan_2),
+  sprin_perpanjangan_penahanan_3:  emptyToNull(raw.sprin_perpanjangan_penahanan_3),
+  tgl_1:            toDateOnly(raw.tgl_1),
+  tgl_2:            toDateOnly(raw.tgl_2),
+  tgl_3:            toDateOnly(raw.tgl_3),
+  alasan_perpanjang_1: emptyToNull(raw.alasan_perpanjang_1),
+  alasan_perpanjang_2: emptyToNull(raw.alasan_perpanjang_2),
+  alasan_perpanjang_3: emptyToNull(raw.alasan_perpanjang_3),
+  alasan_keluar:    emptyToNull(raw.alasan_keluar),
+  keterangan:       emptyToNull(raw.keterangan),
+  titip_lapas:      toInt(raw.titip_lapas),
+  titipan_instansi: emptyToNull(raw.titipan_instansi),
+  penginput:        emptyToNull(raw.penginput),
+  id_satuan_tempat:   toInt(raw.id_satuan_tempat),
+  kode_polda_tempat:  emptyToNull(raw.kode_polda_tempat),
+  kode_polres_tempat: emptyToNull(raw.kode_polres_tempat),
+  kode_polsek_tempat: emptyToNull(raw.kode_polsek_tempat),
+  raw_json:         raw,
+  synced_at:        new Date(),
+  created_at:       raw.created_at ? new Date(raw.created_at) : new Date(),
+  updated_at:       raw.updated_at ? new Date(raw.updated_at) : new Date(),
+});
+
+/**
+ * Daftar kode_polda untuk sync tahanan.
+ * mode 'national' → [null] (satu panggilan/hari tanpa kode_polda)
+ * mode 'per_polda' (default) → iterasi master_polda (menjamin kelengkapan)
+ */
+const getTahananPoldaList = async () => {
+  const mode = String(await getSetting('tahanan_sync_mode', 'per_polda')).toLowerCase();
+  if (mode === 'national') return [null];
+  try {
+    const [rows] = await sequelize.query('SELECT kode_polda FROM master_polda ORDER BY kode_polda');
+    const list = rows.map((r) => r.kode_polda).filter(Boolean);
+    return list.length ? list : [null];
+  } catch {
+    return [null];
+  }
+};
+
+/**
+ * Sync satu hari tahanan — SEMUA PAGE (terminasi murni by last_page).
+ */
+const syncTahananDay = async (dateStr, client, kodePolda) => {
+  let page = 1;
+  let hasMore = true;
+  let total_fetched = 0, total_inserted = 0, total_updated = 0, total_skipped = 0;
+
+  while (hasMore) {
+    const params = { from: dateStr, to: dateStr, showby: 'updated_at', page };
+    if (kodePolda) params.kode_polda = kodePolda;
+
+    const response = await client.get('/tahanan', { params });
+    const data = response.data;
+    const records = data?.data || [];
+    total_fetched += records.length;
+
+    if (records.length === 0) break;
+
+    await sequelize.transaction(async (t) => {
+      for (const raw of records) {
+        try {
+          const [, created] = await Tahanan.upsert(mapTahanan(raw), { transaction: t, returning: false });
+          if (created) total_inserted++; else total_updated++;
+        } catch (recErr) {
+          logger.warn(`[Sync Tahanan] id=${raw.id} skipped: ${recErr.message}`);
+          total_skipped++;
+        }
+      }
+    });
+
+    const lastPage = parseInt(data.last_page, 10) || 1;
+    if (page >= lastPage) hasMore = false; else page++;
+    if (page > MAX_PAGES) {
+      hasMore = false;
+      logger.warn(`[Sync Tahanan] Safety cap ${MAX_PAGES} pages reached for date=${dateStr}`);
+    }
+  }
+
+  return { total_fetched, total_inserted, total_updated, total_skipped };
+};
+
+/**
+ * Sync tahanan untuk rentang tanggal (dipanggil dari syncAll).
+ */
+const syncTahanan = async (fromDate, toDate, triggeredBy = 'scheduler') => {
+  const startTime = Date.now();
+  let log = null;
+  // SyncLog opsional: kolom tipe bisa berupa ENUM('lp_a','lp_b'); jika gagal, jangan hentikan sync.
+  try {
+    log = await SyncLog.create({
+      tipe: 'tahanan', status: 'running',
+      params_used: { from: fromDate, to: toDate, triggeredBy },
+      started_at: new Date(), triggered_by: triggeredBy,
+    });
+  } catch (e) {
+    logger.warn(`[Sync Tahanan] SyncLog tidak dibuat (kolom tipe mungkin ENUM): ${e.message}`);
+  }
+
+  let total_fetched = 0, total_inserted = 0, total_updated = 0, total_skipped = 0;
+
+  try {
+    const clientId = (await getSetting('source_api_client_id', '')) || process.env.SOURCE_API_CLIENT_ID || '';
+    const cookie   = (await getSetting('source_api_cookie',    '')) || process.env.SOURCE_API_COOKIE    || '';
+    if (!clientId) throw new Error('Kredensial CLIENTID belum diset.');
+    if (!cookie)   throw new Error('Kredensial Cookie belum diset.');
+
+    const client = await getApiClient();
+    const poldaList = await getTahananPoldaList();
+
+    const dates = [];
+    const cur = moment(fromDate);
+    const end = moment(toDate);
+    while (cur.isSameOrBefore(end, 'day')) { dates.push(cur.format('YYYY-MM-DD')); cur.add(1, 'day'); }
+
+    const cakupan = (poldaList.length === 1 && poldaList[0] === null) ? 'nasional' : `${poldaList.length} polda`;
+    logger.info(`[Sync Tahanan] ${dates.length} hari × ${cakupan}: ${fromDate} → ${toDate}`);
+
+    for (const dateStr of dates) {
+      for (const kp of poldaList) {
+        const r = await syncTahananDay(dateStr, client, kp);
+        total_fetched  += r.total_fetched;
+        total_inserted += r.total_inserted;
+        total_updated  += r.total_updated;
+        total_skipped  += r.total_skipped;
+      }
+    }
+
+    await cache.delPattern('tahanan:*').catch(() => {});
+
+    if (log) await log.update({
+      status: 'success', total_fetched, total_inserted, total_updated, total_skipped,
+      finished_at: new Date(), duration_ms: Date.now() - startTime,
+    });
+    logger.info(`[Sync Tahanan] ✅ Fetched:${total_fetched} Inserted:${total_inserted} Updated:${total_updated} Skipped:${total_skipped} (${((Date.now()-startTime)/1000).toFixed(1)}s)`);
+  } catch (error) {
+    const errMsg = extractErrorMessage(error);
+    if (log) await log.update({
+      status: 'failed', total_fetched, total_inserted, total_updated, total_skipped,
+      error_message: errMsg.substring(0, 1000), finished_at: new Date(), duration_ms: Date.now() - startTime,
+    }).catch(() => {});
+    logger.error(`[Sync Tahanan] ❌ Failed: ${errMsg}`);
+    throw error;
+  }
+
+  return { total_fetched, total_inserted, total_updated };
+};
+
 // ─── Main Sync Functions ──────────────────────────────────────────────────────
 
 /**
@@ -446,6 +645,13 @@ const syncAll = async (options = {}) => {
       .catch(e => ({ error: e.message }));
   }
 
+  // Tahanan ikut dalam alur sync yang sama (scheduler 6 jam menarik A, B, dan tahanan)
+  const syncTah = await getSetting('tahanan_sync_enabled', 'true');
+  if ((!tipe || tipe === 'tahanan') && syncTah === 'true') {
+    results.tahanan = await syncTahanan(fromDate, toDate, triggeredBy)
+      .catch(e => ({ error: e.message }));
+  }
+
   return { from: fromDate, to: toDate, results };
 };
 
@@ -485,4 +691,4 @@ const startupSync = async () => {
   logger.info('[Startup] ✅ Initial sync selesai');
 };
 
-module.exports = { syncAll, syncEndpoint, startupSync, checkForNewData };
+module.exports = { syncAll, syncEndpoint, syncTahanan, startupSync, checkForNewData };
