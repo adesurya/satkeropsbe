@@ -3,6 +3,7 @@
 const express = require('express');
 const Joi = require('joi');
 const router = express.Router();
+const atensiController = require('../controllers/atensi.controller');
 
 const { sequelize } = require('../config/database');
 const cache = require('../utils/cache');
@@ -95,6 +96,9 @@ router.get('/laporan/a',      authenticate, applyWilayahScope, lq, LaporanContro
 router.get('/laporan/a/:id',  authenticate, applyWilayahScope, LaporanController.showA);
 router.get('/laporan/b',      authenticate, applyWilayahScope, lq, LaporanController.indexB);
 router.get('/laporan/b/:id',  authenticate, applyWilayahScope, LaporanController.showB);
+
+router.get('/laporan/atensi',      authenticate, atensiController.getAtensi);
+router.get('/laporan/atensi/tren', authenticate, atensiController.getAtensiTren);
 
 // ── Export (ter-scope wilayah) ───────────────────────────────────────────────────
 router.get('/export/laporan',           authenticate, applyWilayahScope, ExportController.laporan);
