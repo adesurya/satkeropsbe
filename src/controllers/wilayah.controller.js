@@ -11,6 +11,9 @@ const parsePage = (query) => {
   return { page, limit, offset: (page - 1) * limit };
 };
 
+// Terima beberapa kemungkinan nama parameter dari frontend agar tahan-banting.
+const getFilterPolda = (query) => query.kode_polda || query.id_polda || query.polda || null;
+
 const WilayahController = {
   /**
    * GET /wilayah/polda
@@ -53,10 +56,10 @@ const WilayahController = {
 
   /**
    * GET /wilayah/polres
-   * Query: id_polda (opsional), q (opsional), page, limit
+   * Query: kode_polda | id_polda (opsional), q (opsional), page, limit
    * Scope per role:
-   *  - admin/manager : semua polres (boleh difilter id_polda)
-   *  - polda         : hanya polres di bawah polda mereka (id_polda dikunci)
+   *  - admin/manager : semua polres (boleh difilter kode_polda)
+   *  - polda         : hanya polres di bawah polda mereka (dikunci, query diabaikan)
    *  - polres        : hanya polres milik mereka
    */
   async listPolres(req, res) {
@@ -65,11 +68,15 @@ const WilayahController = {
       const { role, id_polda, id_polres } = req.user;
       const where = {};
 
+      // PERBAIKAN: baca filter dari kode_polda ATAU id_polda (sebelumnya hanya id_polda,
+      // sehingga frontend yang mengirim ?kode_polda=... diabaikan → semua polres tampil).
+      const filterPolda = getFilterPolda(req.query);
+
       if (role === 'admin' || role === 'manager') {
-        if (req.query.id_polda) where.kode_polda = req.query.id_polda;
+        if (filterPolda) where.kode_polda = filterPolda;
       } else if (role === 'polda') {
         if (!id_polda) return ApiResponse.success(res, [], 'Tidak ada wilayah', 200, { total: 0 });
-        where.kode_polda = id_polda; // dikunci ke polda sendiri, abaikan query id_polda
+        where.kode_polda = id_polda; // dikunci ke polda sendiri, abaikan query
       } else if (role === 'polres') {
         if (!id_polres) return ApiResponse.success(res, [], 'Tidak ada wilayah', 200, { total: 0 });
         where.kode_polres = id_polres;
