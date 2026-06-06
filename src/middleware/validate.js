@@ -125,7 +125,9 @@ const schemas = {
   // Query daftar wilayah (polda/polres)
   wilayahQuery: Joi.object({
     q: Joi.string().max(150).optional(),
+    kode_polda: Joi.string().max(20).optional(),   // ← tambahkan: ini yang dikirim frontend
     id_polda: Joi.string().max(20).optional(),
+    polda: Joi.string().max(20).optional(),         // ← alias opsional, jaga-jaga
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(1000).default(100),
   }),
